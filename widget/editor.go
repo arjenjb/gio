@@ -653,21 +653,10 @@ func (e *Editor) layout(gtx layout.Context, content layout.Widget) layout.Dimens
 
 	defer clip.Rect(image.Rectangle{Max: e.viewSize}).Push(gtx.Ops).Pop()
 	pointer.CursorText.Add(gtx.Ops)
-	const keyFilterNoLeftUp = "(ShortAlt)-(Shift)-[→,↓]|(Shift)-[⏎,⌤]|(ShortAlt)-(Shift)-[⌫,⌦]|(Shift)-[⇞,⇟,⇱,⇲]|Short-[C,V,X,A]|Short-(Shift)-Z"
-	const keyFilterNoRightDown = "(ShortAlt)-(Shift)-[←,↑]|(Shift)-[⏎,⌤]|(ShortAlt)-(Shift)-[⌫,⌦]|(Shift)-[⇞,⇟,⇱,⇲]|Short-[C,V,X,A]|Short-(Shift)-Z"
-	const keyFilterNoArrows = "(Shift)-[⏎,⌤]|(ShortAlt)-(Shift)-[⌫,⌦]|(Shift)-[⇞,⇟,⇱,⇲]|Short-[C,V,X,A]|Short-(Shift)-Z"
-	const keyFilterAllArrows = "(ShortAlt)-(Shift)-[←,→,↑,↓]|(Shift)-[⏎,⌤]|(ShortAlt)-(Shift)-[⌫,⌦]|(Shift)-[⇞,⇟,⇱,⇲]|Short-[C,V,X,A]|Short-(Shift)-Z"
+
 	caret := e.closestPosition(combinedPos{runes: e.caret.start})
-	switch {
-	case caret.runes == 0 && caret.runes == e.Len():
-		key.InputOp{Tag: &e.eventKey, Hint: e.InputHint, Keys: keyFilterNoArrows}.Add(gtx.Ops)
-	case caret.runes == 0:
-		key.InputOp{Tag: &e.eventKey, Hint: e.InputHint, Keys: keyFilterNoLeftUp}.Add(gtx.Ops)
-	case caret.runes == e.Len():
-		key.InputOp{Tag: &e.eventKey, Hint: e.InputHint, Keys: keyFilterNoRightDown}.Add(gtx.Ops)
-	default:
-		key.InputOp{Tag: &e.eventKey, Hint: e.InputHint, Keys: keyFilterAllArrows}.Add(gtx.Ops)
-	}
+	key.InputOp{Tag: &e.eventKey, Hint: e.InputHint, Keys: e.keyFilter(caret)}.Add(gtx.Ops)
+
 	if e.requestFocus {
 		key.FocusOp{Tag: &e.eventKey}.Add(gtx.Ops)
 		key.SoftKeyboardOp{Show: true}.Add(gtx.Ops)
@@ -1547,6 +1536,58 @@ func (e *Editor) Seek(offset int64, whence int) (int64, error) {
 // Read implements io.Reader.
 func (e *Editor) Read(p []byte) (int, error) {
 	return e.rr.Read(p)
+}
+
+func (e *Editor) keyFilter(caret combinedPos) key.Set {
+	const keyCommon = "(ShortAlt)-(Shift)-[⌫,⌦]|(Shift)-[⇞,⇟,⇱,⇲]|Short-[C,V,X,A]|Short-(Shift)-Z"
+	const keySubmit = "(Shift)-[⏎,⌤]"
+
+	const keyFilterSingleLineNoLeft = "(ShortAlt)-(Shift)-[→]|" + keyCommon
+	const keyFilterSingleLineNoRight = "(ShortAlt)-(Shift)-[←]|" + keyCommon
+	const keyFilterSingleLineAllArrows = "(ShortAlt)-(Shift)-[←,→]|" + keyCommon
+
+	const keyFilterSingleLineNoLeftWithSubmit = "(ShortAlt)-(Shift)-[→]|" + keyCommon + "|" + keySubmit
+	const keyFilterSingleLineNoRightWithSubmit = "(ShortAlt)-(Shift)-[←]|" + keyCommon + "|" + keySubmit
+	const keyFilterSingleLineAllArrowsWithSubmit = "(ShortAlt)-(Shift)-[←,→]|" + keyCommon + "|" + keySubmit
+
+	const keyFilterNoLeftUp = "(ShortAlt)-(Shift)-[→,↓]|" + keyCommon + "|" + keySubmit
+	const keyFilterNoRightDown = "(ShortAlt)-(Shift)-[←,↑]|" + keyCommon + "|" + keySubmit
+	const keyFilterAllArrows = "(ShortAlt)-(Shift)-[←,→,↑,↓]|" + keyCommon + "|" + keySubmit
+
+	const keyFilterNoArrows = keyCommon
+
+	switch {
+	case caret.runes == 0 && caret.runes == e.Len():
+		// Editor is empty, nowhere to go
+		return keyFilterNoArrows
+
+	case caret.runes == 0:
+		// We are at the start of the input text
+		if e.SingleLine && e.Submit {
+			return keyFilterSingleLineNoLeftWithSubmit
+		} else if e.SingleLine {
+			return keyFilterSingleLineNoLeft
+		} else {
+			return keyFilterNoLeftUp
+		}
+	case caret.runes == e.Len():
+		// We are at the end of the input
+		if e.SingleLine && e.Submit {
+			return keyFilterSingleLineNoRightWithSubmit
+		} else if e.SingleLine {
+			return keyFilterSingleLineNoRight
+		} else {
+			return keyFilterNoRightDown
+		}
+	default:
+		if e.SingleLine && e.Submit {
+			return keyFilterSingleLineAllArrowsWithSubmit
+		} else if e.SingleLine {
+			return keyFilterSingleLineAllArrows
+		} else {
+			return keyFilterAllArrows
+		}
+	}
 }
 
 func max(a, b int) int {
