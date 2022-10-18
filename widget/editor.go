@@ -653,10 +653,12 @@ func (e *Editor) layout(gtx layout.Context, content layout.Widget) layout.Dimens
 
 	defer clip.Rect(image.Rectangle{Max: e.viewSize}).Push(gtx.Ops).Pop()
 	pointer.CursorText.Add(gtx.Ops)
-
-	caret := e.closestPosition(combinedPos{runes: e.caret.start})
-	key.InputOp{Tag: &e.eventKey, Hint: e.InputHint, Keys: e.keyFilter(caret)}.Add(gtx.Ops)
-
+	var keys key.Set
+	if e.focused {
+		caret := e.closestPosition(combinedPos{runes: e.caret.start})
+		keys = e.keyFilter(caret)
+	}
+	key.InputOp{Tag: &e.eventKey, Hint: e.InputHint, Keys: keys}.Add(gtx.Ops)
 	if e.requestFocus {
 		key.FocusOp{Tag: &e.eventKey}.Add(gtx.Ops)
 		key.SoftKeyboardOp{Show: true}.Add(gtx.Ops)

@@ -14,7 +14,7 @@ import (
 	"unicode/utf8"
 
 	"gioui.org/f32"
-	"gioui.org/font/gofont"
+	"gioui.org/font/opentype"
 	"gioui.org/gpu"
 	"gioui.org/internal/ops"
 	"gioui.org/io/event"
@@ -25,9 +25,11 @@ import (
 	"gioui.org/io/system"
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/text"
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
+	"golang.org/x/image/font/gofont/goregular"
 
 	_ "gioui.org/app/internal/log"
 )
@@ -140,7 +142,8 @@ type queue struct {
 func NewWindow(options ...Option) *Window {
 	// Measure decoration height.
 	deco := new(widget.Decorations)
-	theme := material.NewTheme(gofont.Collection())
+	face, _ := opentype.Parse(goregular.TTF)
+	theme := material.NewTheme([]text.FontFace{{Font: text.Font{Typeface: "Go"}, Face: face}})
 	decoStyle := material.Decorations(theme, deco, 0, "")
 	gtx := layout.Context{
 		Ops: new(op.Ops),
@@ -180,6 +183,7 @@ func NewWindow(options ...Option) *Window {
 	w.decorations.Theme = theme
 	w.decorations.Decorations = deco
 	w.decorations.enabled = cnf.Decorated
+	w.decorations.height = decoHeight
 	w.imeState.compose = key.Range{Start: -1, End: -1}
 	w.semantic.ids = make(map[router.SemanticID]router.SemanticNode)
 	w.callbacks.w = w
@@ -425,7 +429,7 @@ func (w *Window) driverDefer(f func(d driver)) {
 
 func (w *Window) updateAnimation(d driver) {
 	animate := false
-	if w.stage >= system.StageRunning && w.hasNextFrame {
+	if w.stage >= system.StageInactive && w.hasNextFrame {
 		if dt := time.Until(w.nextFrame); dt <= 0 {
 			animate = true
 		} else {
@@ -825,7 +829,7 @@ func (w *Window) processEvent(d driver, e event.Event) bool {
 	}
 	switch e2 := e.(type) {
 	case system.StageEvent:
-		if e2.Stage < system.StageRunning {
+		if e2.Stage < system.StageInactive {
 			if w.gpu != nil {
 				w.ctx.Lock()
 				w.gpu.Release()
@@ -841,7 +845,7 @@ func (w *Window) processEvent(d driver, e event.Event) bool {
 		if e2.Size == (image.Point{}) {
 			panic(errors.New("internal error: zero-sized Draw"))
 		}
-		if w.stage < system.StageRunning {
+		if w.stage < system.StageInactive {
 			// No drawing if not visible.
 			break
 		}
@@ -906,9 +910,6 @@ func (w *Window) processEvent(d driver, e event.Event) bool {
 		w.waitAck(d)
 	case ConfigEvent:
 		w.decorations.Config = e2.Config
-		if !w.fallbackDecorate() {
-			w.decorations.height = 0
-		}
 		e2.Config = w.effectiveConfig()
 		w.out <- e2
 	case event.Event:
