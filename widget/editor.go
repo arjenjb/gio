@@ -1011,7 +1011,8 @@ func (e *Editor) Regions(start, end int, regions []Region) []Region {
 }
 
 func (e *Editor) keyFilter(caret combinedPos) key.Set {
-	const keyCommon = "(ShortAlt)-(Shift)-[⌫,⌦]|(Shift)-[⇞,⇟,⇱,⇲]|Short-[C,V,X,A]|Short-(Shift)-Z"
+	const keyDelete = "(ShortAlt)-(Shift)-[⌫,⌦]"
+	const keyCommon = "(Shift)-[⇞,⇟,⇱,⇲]|Short-[C,V,X,A]|Short-(Shift)-Z"
 	const keySubmit = "(Shift)-[⏎,⌤]"
 
 	const keyFilterSingleLineNoLeft = "(ShortAlt)-(Shift)-[→]|" + keyCommon
@@ -1036,28 +1037,28 @@ func (e *Editor) keyFilter(caret combinedPos) key.Set {
 	case caret.runes == 0:
 		// We are at the start of the input text
 		if e.SingleLine && e.Submit {
-			return keyFilterSingleLineNoLeftWithSubmit
+			return keyDelete + "|" + keyFilterSingleLineNoLeftWithSubmit
 		} else if e.SingleLine {
-			return keyFilterSingleLineNoLeft
+			return keyDelete + "|" + keyFilterSingleLineNoLeft
 		} else {
-			return keyFilterNoLeftUp
+			return keyDelete + "|" + keyFilterNoLeftUp
 		}
 	case caret.runes == e.Len():
 		// We are at the end of the input
 		if e.SingleLine && e.Submit {
-			return keyFilterSingleLineNoRightWithSubmit
+			return keyDelete + "|" + keyFilterSingleLineNoRightWithSubmit
 		} else if e.SingleLine {
-			return keyFilterSingleLineNoRight
+			return keyDelete + "|" + keyFilterSingleLineNoRight
 		} else {
-			return keyFilterNoRightDown
+			return keyDelete + "|" + keyFilterNoRightDown
 		}
 	default:
 		if e.SingleLine && e.Submit {
-			return keyFilterSingleLineAllArrowsWithSubmit
+			return keyDelete + "|" + keyFilterSingleLineAllArrowsWithSubmit
 		} else if e.SingleLine {
-			return keyFilterSingleLineAllArrows
+			return keyDelete + "|" + keyFilterSingleLineAllArrows
 		} else {
-			return keyFilterAllArrows
+			return keyDelete + "|" + keyFilterAllArrows
 		}
 	}
 }
