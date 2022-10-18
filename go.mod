@@ -1,4 +1,4 @@
-module gioui.org
+module github.com/arjenjb/gio
 
 go 1.19
 
