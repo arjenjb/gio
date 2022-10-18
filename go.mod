@@ -1,10 +1,9 @@
-module github.com/arjenjb/gio
+module gioui.org
 
 go 1.18
 
 require (
 	eliasnaur.com/font v0.0.0-20220124212145-832bb8fc08c3
-	gioui.org v0.0.0-20221011192757-dead6e007f04
 	gioui.org/cpu v0.0.0-20210817075930-8d6a761490d2
 	gioui.org/shader v1.0.6
 	github.com/benoitkugler/textlayout v0.1.3
