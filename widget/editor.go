@@ -594,9 +594,8 @@ func (e *Editor) layout(gtx layout.Context, content layout.Widget) layout.Dimens
 
 	defer clip.Rect(image.Rectangle{Max: visibleDims.Size}).Push(gtx.Ops).Pop()
 	pointer.CursorText.Add(gtx.Ops)
-
-	caret := e.closestPosition(combinedPos{runes: e.caret.start})
-	key.InputOp{Tag: &e.eventKey, Hint: e.InputHint, Keys: e.keyFilter(caret)}.Add(gtx.Ops)
+	caret, _ := e.text.Selection()
+	key.InputOp{Tag: &e.eventKey, Hint: e.InputHint, Keys: e.keyFilter(caret, gtx.Locale.Direction)}.Add(gtx.Ops)
 
 	if e.requestFocus {
 		key.FocusOp{Tag: &e.eventKey}.Add(gtx.Ops)
@@ -973,7 +972,7 @@ func (e *Editor) Regions(start, end int, regions []Region) []Region {
 	return e.text.Regions(start, end, regions)
 }
 
-func (e *Editor) keyFilter(caret combinedPos) key.Set {
+func (e *Editor) keyFilter(caret int, direction system.TextDirection) key.Set {
 	const keyDelete = "(ShortAlt)-(Shift)-[⌫,⌦]"
 	const keyCommon = "(Shift)-[⇞,⇟,⇱,⇲]|Short-[C,V,X,A]|Short-(Shift)-Z"
 	const keySubmit = "(Shift)-[⏎,⌤]"
@@ -992,12 +991,17 @@ func (e *Editor) keyFilter(caret combinedPos) key.Set {
 
 	const keyFilterNoArrows = keyCommon
 
+	atStart := caret == 0
+	atEnd := caret == e.text.Len()
+
+	startAtOrigin := direction.Progression() == system.FromOrigin
+
 	switch {
-	case caret.runes == 0 && caret.runes == e.Len():
+	case atStart && atEnd:
 		// Editor is empty, nowhere to go
 		return keyFilterNoArrows
 
-	case caret.runes == 0:
+	case atStart && startAtOrigin || (atEnd && !startAtOrigin):
 		// We are at the start of the input text
 		if e.SingleLine && e.Submit {
 			return keyDelete + "|" + keyFilterSingleLineNoLeftWithSubmit
@@ -1006,7 +1010,7 @@ func (e *Editor) keyFilter(caret combinedPos) key.Set {
 		} else {
 			return keyDelete + "|" + keyFilterNoLeftUp
 		}
-	case caret.runes == e.Len():
+	case atEnd && startAtOrigin || atStart && !startAtOrigin:
 		// We are at the end of the input
 		if e.SingleLine && e.Submit {
 			return keyDelete + "|" + keyFilterSingleLineNoRightWithSubmit
@@ -1024,6 +1028,14 @@ func (e *Editor) keyFilter(caret combinedPos) key.Set {
 			return keyDelete + "|" + keyFilterAllArrows
 		}
 	}
+}
+
+func (e *Editor) ScrollOffset() image.Point {
+	return e.text.ScrollOff()
+}
+
+func (e *Editor) ScrollInfoY() (float32, float32) {
+	return float32(e.text.ScrollOff().Y) / float32(e.text.ScrollBounds().Dy()), (float32(e.text.viewSize.Y) / float32(e.text.dims.Size.Y))
 }
 
 func max(a, b int) int {
