@@ -374,7 +374,7 @@ CFTypeRef gio_createView(void) {
 
 @implementation GioAppDelegate
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
-	[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+	[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 	[NSApp activateIgnoringOtherApps:YES];
 	gio_onFinishLaunching();
 }
