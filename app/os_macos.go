@@ -161,6 +161,16 @@ static void unhideWindow(CFTypeRef windowRef) {
 	[window deminiaturize:window];
 }
 
+static void unhideApp(CFTypeRef windowRef) {
+	NSWindow* window = (__bridge NSWindow *)windowRef;
+	// [[NSApplication sharedApplication] unhide: window];
+    [NSApp activateIgnoringOtherApps:YES];
+}
+
+static void hideApp() {
+	[[NSApplication sharedApplication] hide: nil];
+}
+
 static NSRect getScreenFrame(CFTypeRef windowRef) {
 	NSWindow* window = (__bridge NSWindow *)windowRef;
 	return [[window screen] frame];
@@ -193,6 +203,7 @@ static CFTypeRef windowForView(CFTypeRef viewRef) {
 
 static void raiseWindow(CFTypeRef windowRef) {
 	NSWindow* window = (__bridge NSWindow *)windowRef;
+    [NSApp activateIgnoringOtherApps:YES];
 	[window makeKeyAndOrderFront:nil];
 }
 
@@ -328,6 +339,14 @@ func (w *window) Configure(options []Option) {
 	window := C.windowForView(w.view)
 
 	switch cnf.Mode {
+	case Hidden:
+		switch prev.Mode {
+		case Hidden:
+		default:
+			w.config.Mode = Hidden
+			C.hideApp()
+		}
+
 	case Fullscreen:
 		switch prev.Mode {
 		case Fullscreen:
@@ -360,6 +379,9 @@ func (w *window) Configure(options []Option) {
 		}
 	case Windowed:
 		switch prev.Mode {
+		case Hidden:
+			C.unhideApp(window)
+			C.unhideWindow(window)
 		case Fullscreen:
 			C.toggleFullScreen(window)
 		case Minimized:
@@ -424,8 +446,8 @@ func (w *window) Perform(acts system.Action) {
 	walkActions(acts, func(a system.Action) {
 		switch a {
 		case system.ActionCenter:
-			r := C.getScreenFrame(window) // the screen size of the window
 			screenScale := float32(C.getScreenBackingScale())
+			r := C.getScreenFrame(window) // the screen size of the window
 			sz := w.config.Size.Div(int(screenScale))
 			x := (int(r.size.width) - sz.X) / 2
 			y := (int(r.size.height) - sz.Y) / 2
