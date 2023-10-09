@@ -14,8 +14,9 @@ import (
 	"unicode/utf8"
 
 	"gioui.org/f32"
-	"gioui.org/font/opentype"
+	"gioui.org/font/gofont"
 	"gioui.org/gpu"
+	"gioui.org/internal/debug"
 	"gioui.org/internal/ops"
 	"gioui.org/io/event"
 	"gioui.org/io/key"
@@ -29,7 +30,6 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
-	"golang.org/x/image/font/gofont/goregular"
 
 	_ "gioui.org/app/internal/log"
 )
@@ -65,8 +65,6 @@ type Window struct {
 	frames   chan *op.Ops
 	frameAck chan struct{}
 	destroy  chan struct{}
-	// dead is closed when the window is destroyed.
-	dead chan struct{}
 
 	stage        system.Stage
 	animating    bool
@@ -140,10 +138,11 @@ type queue struct {
 // Calling NewWindow more than once is not supported on
 // iOS, Android, WebAssembly.
 func NewWindow(options ...Option) *Window {
+	debug.Parse()
 	// Measure decoration height.
 	deco := new(widget.Decorations)
-	face, _ := opentype.Parse(goregular.TTF)
-	theme := material.NewTheme([]text.FontFace{{Font: text.Font{Typeface: "Go"}, Face: face}})
+	theme := material.NewTheme()
+	theme.Shaper = text.NewShaper(text.NoSystemFonts(), text.WithCollection(gofont.Regular()))
 	decoStyle := material.Decorations(theme, deco, 0, "")
 	gtx := layout.Context{
 		Ops: new(op.Ops),
@@ -175,7 +174,6 @@ func NewWindow(options ...Option) *Window {
 		wakeups:          make(chan struct{}, 1),
 		wakeupFuncs:      make(chan func()),
 		destroy:          make(chan struct{}),
-		dead:             make(chan struct{}),
 		options:          make(chan []Option, 1),
 		actions:          make(chan system.Action, 1),
 		nocontext:        cnf.CustomRenderer,
@@ -381,15 +379,6 @@ func (w *Window) Option(opts ...Option) {
 	}
 }
 
-// ReadClipboard initiates a read of the clipboard in the form
-// of a clipboard.Event. Multiple reads may be coalesced
-// to a single event.
-func (w *Window) ReadClipboard() {
-	w.driverDefer(func(d driver) {
-		d.ReadClipboard()
-	})
-}
-
 // WriteClipboard writes a string to the clipboard.
 func (w *Window) WriteClipboard(s string) {
 	w.driverDefer(func(d driver) {
@@ -413,7 +402,7 @@ func (w *Window) Run(f func()) {
 	})
 	select {
 	case <-done:
-	case <-w.dead:
+	case <-w.destroy:
 	}
 }
 
@@ -423,7 +412,7 @@ func (w *Window) driverDefer(f func(d driver)) {
 	select {
 	case w.driverFuncs <- f:
 		w.wakeup()
-	case <-w.dead:
+	case <-w.destroy:
 	}
 }
 
@@ -488,7 +477,7 @@ func (c *callbacks) Event(e event.Event) bool {
 	}
 	c.busy = false
 	select {
-	case <-c.w.dead:
+	case <-c.w.destroy:
 		return handled
 	default:
 	}
@@ -604,8 +593,6 @@ func (w *Window) moveFocus(dir router.FocusDirection, d driver) {
 		dist := v.Mul(int(w.metric.Dp(scrollABit)))
 		w.queue.q.ScrollFocus(dist)
 	}
-	w.setNextFrame(time.Time{})
-	w.updateAnimation(d)
 }
 
 func (c *callbacks) ClickFocus() {
@@ -823,7 +810,7 @@ func (w *Window) updateState(d driver) {
 
 func (w *Window) processEvent(d driver, e event.Event) bool {
 	select {
-	case <-w.dead:
+	case <-w.destroy:
 		return false
 	default:
 	}
@@ -895,7 +882,7 @@ func (w *Window) processEvent(d driver, e event.Event) bool {
 			w.destroyGPU()
 			w.out <- system.DestroyEvent{Err: err}
 			close(w.out)
-			w.destroy <- struct{}{}
+			close(w.destroy)
 			break
 		}
 		w.processFrame(d, frameStart)
@@ -904,7 +891,7 @@ func (w *Window) processEvent(d driver, e event.Event) bool {
 		w.destroyGPU()
 		w.out <- e2
 		close(w.out)
-		w.destroy <- struct{}{}
+		close(w.destroy)
 	case ViewEvent:
 		w.out <- e2
 		w.waitAck(d)
@@ -914,35 +901,38 @@ func (w *Window) processEvent(d driver, e event.Event) bool {
 		w.out <- e2
 	case event.Event:
 		handled := w.queue.q.Queue(e2)
+		if e, ok := e.(key.Event); ok && !handled {
+			if e.State == key.Press {
+				handled = true
+				isMobile := runtime.GOOS == "ios" || runtime.GOOS == "android"
+				switch {
+				case e.Name == key.NameTab && e.Modifiers == 0:
+					w.moveFocus(router.FocusForward, d)
+				case e.Name == key.NameTab && e.Modifiers == key.ModShift:
+					w.moveFocus(router.FocusBackward, d)
+				case e.Name == key.NameUpArrow && e.Modifiers == 0 && isMobile:
+					w.moveFocus(router.FocusUp, d)
+				case e.Name == key.NameDownArrow && e.Modifiers == 0 && isMobile:
+					w.moveFocus(router.FocusDown, d)
+				case e.Name == key.NameLeftArrow && e.Modifiers == 0 && isMobile:
+					w.moveFocus(router.FocusLeft, d)
+				case e.Name == key.NameRightArrow && e.Modifiers == 0 && isMobile:
+					w.moveFocus(router.FocusRight, d)
+				default:
+					handled = false
+				}
+			}
+			// As a special case, the top-most input handler receives all unhandled
+			// events.
+			if !handled {
+				handled = w.queue.q.QueueTopmost(e)
+			}
+		}
+		w.updateCursor(d)
 		if handled {
 			w.setNextFrame(time.Time{})
 			w.updateAnimation(d)
-		} else if e, ok := e.(key.Event); ok && e.State == key.Press {
-			handled = true
-			isMobile := runtime.GOOS == "ios" || runtime.GOOS == "android"
-			switch {
-			case e.Name == key.NameTab && e.Modifiers == 0:
-				w.moveFocus(router.FocusForward, d)
-			case e.Name == key.NameTab && e.Modifiers == key.ModShift:
-				w.moveFocus(router.FocusBackward, d)
-			case e.Name == key.NameUpArrow && e.Modifiers == 0 && isMobile:
-				w.moveFocus(router.FocusUp, d)
-			case e.Name == key.NameDownArrow && e.Modifiers == 0 && isMobile:
-				w.moveFocus(router.FocusDown, d)
-			case e.Name == key.NameLeftArrow && e.Modifiers == 0 && isMobile:
-				w.moveFocus(router.FocusLeft, d)
-			case e.Name == key.NameRightArrow && e.Modifiers == 0 && isMobile:
-				w.moveFocus(router.FocusRight, d)
-			default:
-				handled = false
-			}
 		}
-		// As a sepcial case, the top-most input handler receives all unhandled
-		// events.
-		if e, ok := e.(key.Event); ok && !handled {
-			handled = w.queue.q.QueueTopmost(e)
-		}
-		w.updateCursor(d)
 		return handled
 	}
 	return true
@@ -952,7 +942,7 @@ func (w *Window) run(options []Option) {
 	if err := newWindow(&w.callbacks, options); err != nil {
 		w.out <- system.DestroyEvent{Err: err}
 		close(w.out)
-		w.destroy <- struct{}{}
+		close(w.destroy)
 		return
 	}
 	var wakeup func()
@@ -975,7 +965,6 @@ func (w *Window) run(options []Option) {
 			}
 			timer = time.NewTimer(time.Until(t))
 		case <-w.destroy:
-			close(w.dead)
 			return
 		case <-timeC:
 			select {
@@ -1035,7 +1024,7 @@ func (w *Window) decorate(d driver, e system.FrameEvent, o *op.Ops) (size, offse
 	}
 	style.Layout(gtx)
 	// Update the window based on the actions on the decorations.
-	w.Perform(deco.Actions())
+	w.Perform(deco.Update(gtx))
 	// Offset to place the frame content below the decorations.
 	decoHeight := gtx.Dp(w.decorations.Config.decoHeight)
 	if w.decorations.currentHeight != decoHeight {
