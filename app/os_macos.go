@@ -151,6 +151,15 @@ static void setScreenFrame(CFTypeRef windowRef, CGFloat x, CGFloat y, CGFloat w,
 	[window setFrame:r display:YES];
 }
 
+static void setAlwaysOnTop(CFTypeRef windowRef, BOOL b) {
+	NSWindow* window = (__bridge NSWindow *)windowRef;
+	if (b) {
+		window.level = NSStatusWindowLevel;
+	} else {
+		window.level = NSNormalWindowLevel;
+	}
+}
+
 static void hideWindow(CFTypeRef windowRef) {
 	NSWindow* window = (__bridge NSWindow *)windowRef;
 	[window miniaturize:window];
@@ -409,6 +418,11 @@ func (w *window) Configure(options []Option) {
 			C.setMaxSize(window, C.CGFloat(cnf.MaxSize.X), C.CGFloat(cnf.MaxSize.Y))
 		}
 	}
+
+	if cnf.AlwaysOnTop != prev.AlwaysOnTop {
+		C.setAlwaysOnTop(window, C.BOOL(cnf.AlwaysOnTop))
+	}
+
 	if cnf.Decorated != prev.Decorated {
 		w.config.Decorated = cnf.Decorated
 		mask := C.getWindowStyleMask(window)
