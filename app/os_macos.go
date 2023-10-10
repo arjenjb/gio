@@ -151,7 +151,7 @@ static void setScreenFrame(CFTypeRef windowRef, CGFloat x, CGFloat y, CGFloat w,
 	[window setFrame:r display:YES];
 }
 
-static void setAlwaysOnTop(CFTypeRef windowRef, BOOL b) {
+static void setAlwaysOnTop(CFTypeRef windowRef, int b) {
 	NSWindow* window = (__bridge NSWindow *)windowRef;
 	if (b) {
 		window.level = NSStatusWindowLevel;
@@ -420,7 +420,11 @@ func (w *window) Configure(options []Option) {
 	}
 
 	if cnf.AlwaysOnTop != prev.AlwaysOnTop {
-		C.setAlwaysOnTop(window, C.BOOL(cnf.AlwaysOnTop))
+		a := C.int(C.NO)
+		if cnf.AlwaysOnTop {
+			a = C.int(C.YES)
+		}
+		C.setAlwaysOnTop(window, a)
 	}
 
 	if cnf.Decorated != prev.Decorated {
