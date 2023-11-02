@@ -119,6 +119,11 @@ static void setWindowStandardButtonHidden(CFTypeRef windowRef, NSWindowButton bt
 	[window standardWindowButton:btn].hidden = (BOOL)hide;
 }
 
+static void setWindowLevel(CFTypeRef windowRef, NSWindowLevel level) {
+	NSWindow *window = (__bridge NSWindow *)windowRef;
+	window.level = level;
+}
+
 static void performWindowDragWithEvent(CFTypeRef windowRef, CFTypeRef evt) {
 	NSWindow *window = (__bridge NSWindow *)windowRef;
 	[window performWindowDragWithEvent:(__bridge NSEvent*)evt];
@@ -406,6 +411,13 @@ func (w *window) Configure(options []Option) {
 		C.setWindowStandardButtonHidden(window, C.NSWindowCloseButton, barTrans)
 		C.setWindowStandardButtonHidden(window, C.NSWindowMiniaturizeButton, barTrans)
 		C.setWindowStandardButtonHidden(window, C.NSWindowZoomButton, barTrans)
+	}
+	if prev.AlwaysOnTop != cnf.AlwaysOnTop {
+		var level = C.NSWindowLevel(C.NSNormalWindowLevel)
+		if cnf.AlwaysOnTop {
+			level = C.NSWindowLevel(C.NSStatusWindowLevel)
+		}
+		C.setWindowLevel(window, level)
 	}
 	w.w.Event(ConfigEvent{Config: w.config})
 }
