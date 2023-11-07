@@ -198,6 +198,7 @@ static CFTypeRef windowForView(CFTypeRef viewRef) {
 
 static void raiseWindow(CFTypeRef windowRef) {
 	NSWindow* window = (__bridge NSWindow *)windowRef;
+	[NSApp activateIgnoringOtherApps:YES];
 	[window makeKeyAndOrderFront:nil];
 }
 
